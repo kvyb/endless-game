@@ -1,6 +1,6 @@
 # Endless Game
 
-![](https://github.com/kvyb/endless-game/demo.gif)
+![](https://github.com/endless-game/demo.gif)
 
 ## Overview
 An autonomous Python game using Pygame, where balls compete to color the screen.
