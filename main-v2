@@ -1,0 +1,238 @@
+import pygame
+import random
+import time
+
+# Initialize Pygame
+pygame.init()
+
+# Constants
+WIDTH, HEIGHT = 400, 400
+SCOREBOARD_HEIGHT = 50 
+CHART_HEIGHT = 150
+CHART_MARGIN = 20
+WINDOW_HEIGHT = HEIGHT + SCOREBOARD_HEIGHT + CHART_MARGIN + CHART_HEIGHT 
+BALL_SIZE = 20
+BALL_SPEED = 8
+SQUARE_SIZE = 20
+MAX_SCORE_HISTORY = 50
+
+# Colors
+LEFT_COLOR = (128, 0, 128)  # Purple
+RIGHT_COLOR = (255, 165, 0)  # Orange
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+GREEN = (0, 255, 0)
+
+screen = pygame.display.set_mode((WIDTH, WINDOW_HEIGHT))
+pygame.display.set_caption("Dynamic Domain Game")
+
+class Ball:
+    def __init__(self, x, y, color, paint_color):
+        self.x = x
+        self.y = y
+        self.color = WHITE
+        self.paint_color = paint_color
+        self.dx = BALL_SPEED if color == LEFT_COLOR else -BALL_SPEED
+        self.dy = BALL_SPEED if random.choice([True, False]) else -BALL_SPEED
+
+    def bounce(self, collision_type):
+        if collision_type == 'horizontal':
+            self.dx = -self.dx
+        elif collision_type == 'vertical':
+            self.dy = -self.dy
+
+    def move(self, squares):
+        # Predict the next position
+        new_x = self.x + self.dx
+        new_y = self.y + self.dy
+
+        # Check for collision with the walls
+        if new_x < 0 or new_x > WIDTH - BALL_SIZE:
+            self.bounce('horizontal')
+        if new_y < 0 or new_y > HEIGHT - BALL_SIZE:
+            self.bounce('vertical')
+
+        # Update the position
+        self.x += self.dx
+        self.y += self.dy
+
+        # Check for collision with squares
+        for row in squares:
+            for square in row:
+                if square['rect'].colliderect(self.x, self.y, BALL_SIZE, BALL_SIZE):
+                    if square['color'] != self.paint_color:
+                        square['color'] = self.paint_color
+                        # Determine collision type (horizontal/vertical)
+                        collision_type = self.determine_collision_type(square['rect'])
+                        self.bounce(collision_type)
+                        # Check if the square is special
+                        if square.get('special'):
+                            self.increase_speed()
+                            square['special'] = False
+                            pygame.time.set_timer(pygame.USEREVENT + 2, 30000)
+                        return
+
+    def draw(self):
+        pygame.draw.ellipse(screen, self.color, (self.x, self.y, BALL_SIZE, BALL_SIZE))
+
+    def increase_speed(self):
+        self.dx = 10 if self.dx > 0 else -10
+        self.dy = 10 if self.dy > 0 else -10
+        self.color = GREEN
+        # Set a timer to reset the speed after 5 seconds
+        pygame.time.set_timer(pygame.USEREVENT + 1, 5000)
+
+    def reset_speed(self):
+        self.dx = BALL_SPEED if self.dx > 0 else -BALL_SPEED
+        self.dy = BALL_SPEED if self.dy > 0 else -BALL_SPEED
+        self.color = WHITE  # Change color back to white
+
+    def determine_collision_type(self, rect):
+        # Check if collision is more likely horizontal or vertical
+        if abs(self.x + BALL_SIZE / 2 - rect.centerx) > abs(self.y + BALL_SIZE / 2 - rect.centery):
+            return 'horizontal'
+        else:
+            return 'vertical'
+
+# Create squares
+def create_squares():
+    squares = []
+    for y in range(0, HEIGHT, SQUARE_SIZE):
+        row = []
+        for x in range(0, WIDTH, SQUARE_SIZE):
+            color = LEFT_COLOR if x < WIDTH / 2 else RIGHT_COLOR
+            square = {'rect': pygame.Rect(x, y, SQUARE_SIZE, SQUARE_SIZE), 'color': color}
+            row.append(square)
+        squares.append(row)
+    # Randomly choose one square to be the special square
+    special_row = random.choice(squares)
+    special_square = random.choice(special_row)
+    special_square['special'] = True
+    special_square['color'] = GREEN 
+    return squares
+
+# Initialize balls and squares
+left_ball = Ball(WIDTH // 4, HEIGHT // 2, WHITE, LEFT_COLOR)
+right_ball = Ball(3 * WIDTH // 4, HEIGHT // 2, WHITE, RIGHT_COLOR)
+squares = create_squares()
+
+# Initialize score history
+left_score_history = []
+right_score_history = []
+
+# Function to calculate scores
+def calculate_scores(squares):
+    left_score = 0
+    right_score = 0
+    for row in squares:
+        for square in row:
+            if square['color'] == LEFT_COLOR:
+                left_score += 1
+            elif square['color'] == RIGHT_COLOR:
+                right_score += 1
+    return left_score, right_score
+
+# Function to draw the scoreboard
+def draw_scoreboard(left_score, right_score):
+    scoreboard_rect = pygame.Rect(0, HEIGHT, WIDTH, SCOREBOARD_HEIGHT)
+    pygame.draw.rect(screen, BLACK, scoreboard_rect)
+    font = pygame.font.Font(None, 36)
+    text = font.render(f"Purple: {left_score} Orange: {right_score}", True, WHITE)
+    screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT + (SCOREBOARD_HEIGHT - text.get_height()) // 2))
+
+# Function to update and draw the line chart using Pygame's drawing functions
+def draw_line_chart_pygame(left_score_history, right_score_history):
+    # Limit the history size
+    left_score_history = left_score_history[-MAX_SCORE_HISTORY:]
+    right_score_history = right_score_history[-MAX_SCORE_HISTORY:]
+
+    # Calculate the maximum score to normalize the chart scale
+    max_score = max(max(left_score_history, default=0), max(right_score_history, default=0), 1)
+
+    # Calculate the spacing between points on the x-axis
+    x_spacing = WIDTH / MAX_SCORE_HISTORY
+
+    # Starting position for the chart on the y-axis
+    chart_base = HEIGHT + SCOREBOARD_HEIGHT + CHART_MARGIN
+
+    # Draw the chart background and grid lines
+    chart_rect = pygame.Rect(0, chart_base, WIDTH, CHART_HEIGHT)
+    pygame.draw.rect(screen, BLACK, chart_rect)
+    for x in range(0, WIDTH, int(x_spacing)):
+        pygame.draw.line(screen, (50, 50, 50), (x, chart_base), (x, chart_base + CHART_HEIGHT))
+    for y in range(chart_base, chart_base + CHART_HEIGHT, CHART_HEIGHT // 10):
+        pygame.draw.line(screen, (50, 50, 50), (0, y), (WIDTH, y))
+
+    # Draw the left score history line
+    for i in range(1, len(left_score_history)):
+        start_pos = ((i - 1) * x_spacing, chart_base + CHART_HEIGHT - (CHART_HEIGHT / 2) * (left_score_history[i - 1] / max_score))
+        end_pos = (i * x_spacing, chart_base + CHART_HEIGHT - (CHART_HEIGHT / 2) * (left_score_history[i] / max_score))
+        pygame.draw.line(screen, LEFT_COLOR, start_pos, end_pos, 2)
+
+    # Draw the right score history line
+    for i in range(1, len(right_score_history)):
+        start_pos = ((i - 1) * x_spacing, chart_base + CHART_HEIGHT - (CHART_HEIGHT / 2) * (right_score_history[i - 1] / max_score))
+        end_pos = (i * x_spacing, chart_base + CHART_HEIGHT - (CHART_HEIGHT / 2) * (right_score_history[i] / max_score))
+        pygame.draw.line(screen, RIGHT_COLOR, start_pos, end_pos, 2)
+
+def draw_correlated_random_value(screen, value, position, font_size=30, color=WHITE, background_color=BLACK):
+    font = pygame.font.Font(None, font_size)
+    text = font.render(f"Random Value: {value}", True, color, background_color)
+    text_rect = text.get_rect(center=position)
+    pygame.draw.rect(screen, background_color, text_rect.inflate(10, 10))  # Optional: Draw a background box
+    screen.blit(text, text_rect)
+
+# Add this function somewhere in the global scope of your file
+def calculate_correlated_random_value(squares):
+    # Placeholder logic for the function
+    # Replace this with the actual calculation logic
+    return random.randint(0, 100)
+
+# Main game loop
+running = True
+while running:
+    screen.fill(WHITE)  
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.USEREVENT + 1:  # Timer event to reset ball speed and color
+            left_ball.reset_speed()
+            right_ball.reset_speed()
+            pygame.time.set_timer(pygame.USEREVENT + 1, 0)  # Stop the timer
+        elif event.type == pygame.USEREVENT + 2:  # Timer event to respawn the special square
+            special_row = random.choice(squares)
+            special_square = random.choice(special_row)
+            special_square['special'] = True
+            special_square['color'] = GREEN 
+            pygame.time.set_timer(pygame.USEREVENT + 2, 0)  # Stop the timer
+
+    # Draw squares
+    for row in squares:
+        for square in row:
+            pygame.draw.rect(screen, square['color'], square['rect'])
+
+    # Calculate and draw the correlated random value
+    correlated_random_value = calculate_correlated_random_value(squares)
+    draw_correlated_random_value(screen, correlated_random_value, position=(WIDTH // 2, HEIGHT + SCOREBOARD_HEIGHT + CHART_MARGIN + CHART_HEIGHT + 30))
+
+    # Move and draw balls
+    left_ball.move(squares)
+    right_ball.move(squares)
+    left_ball.draw()
+    right_ball.draw()
+
+    # Calculate scores and draw scoreboard
+    left_score, right_score = calculate_scores(squares)
+    draw_scoreboard(left_score, right_score)
+
+    # Update score history and draw the line chart using Pygame
+    left_score_history.append(left_score)
+    right_score_history.append(right_score)
+    draw_line_chart_pygame(left_score_history, right_score_history)  # Use the new Pygame line chart function
+
+    # Update the display
+    pygame.display.flip()
+    pygame.time.delay(20)
+
+pygame.quit()
